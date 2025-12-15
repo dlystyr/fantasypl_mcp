@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Python-based MCP (Model Context Protocol) server for Fantasy Premier League data and analytics. It connects to PostgreSQL (for data storage and analytics) and Redis (for caching), providing tools for FPL team analysis, transfer suggestions, and form insights.
+This is a Python-based MCP (Model Context Protocol) server for Fantasy Premier League data and analytics. It connects to PostgreSQL (for data storage and analytics) and Valkey (for caching), providing tools for FPL team analysis, transfer suggestions, and form insights.
 
 ## Development Setup
 
@@ -27,7 +27,7 @@ uv run python scripts/sync_fpl_data.py
 
 ## Database Setup
 
-Requires PostgreSQL and Redis running locally. Copy `.env.example` to `.env` and configure:
+Requires PostgreSQL and Valkey running locally. Copy `.env.example` to `.env` and configure:
 
 ```bash
 cp .env.example .env
@@ -44,7 +44,7 @@ fantasypl_mcp/
 │   ├── config.py              # Pydantic settings
 │   ├── fpl_client.py          # FPL API client
 │   ├── tools/                 # MCP tool implementations
-│   ├── database/              # PostgreSQL & Redis layer
+│   ├── database/              # PostgreSQL & Valkey layer
 │   └── analytics/             # Form, fixtures, insights
 └── scripts/
     └── sync_fpl_data.py       # Cron job for data sync

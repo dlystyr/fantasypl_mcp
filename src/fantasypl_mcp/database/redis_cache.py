@@ -1,17 +1,17 @@
-"""Redis caching layer for FPL data."""
+"""Valkey caching layer for FPL data (Redis-compatible)."""
 
 import json
 from typing import Any
 
-import redis.asyncio as redis
+import redis.asyncio as redis  # Works with Valkey (Redis-compatible)
 
 from ..config import get_settings
 
 settings = get_settings()
 
 
-class RedisCache:
-    """Redis cache manager for FPL data."""
+class ValkeyCache:
+    """Valkey cache manager for FPL data."""
 
     # Cache key prefixes
     PREFIX_BOOTSTRAP = "fpl:bootstrap"
@@ -24,22 +24,22 @@ class RedisCache:
         self._client: redis.Redis | None = None
 
     async def connect(self) -> None:
-        """Connect to Redis."""
+        """Connect to Valkey."""
         self._client = redis.Redis.from_url(
-            settings.redis_url,
+            settings.valkey_url,
             decode_responses=True,
         )
 
     async def disconnect(self) -> None:
-        """Disconnect from Redis."""
+        """Disconnect from Valkey."""
         if self._client:
             await self._client.close()
 
     @property
     def client(self) -> redis.Redis:
-        """Get Redis client."""
+        """Get Valkey client."""
         if not self._client:
-            raise RuntimeError("Redis not connected. Call connect() first.")
+            raise RuntimeError("Valkey not connected. Call connect() first.")
         return self._client
 
     async def get(self, key: str) -> Any | None:
@@ -169,9 +169,9 @@ class RedisCache:
 
 
 # Global cache instance
-cache = RedisCache()
+cache = ValkeyCache()
 
 
-async def get_cache() -> RedisCache:
+async def get_cache() -> ValkeyCache:
     """Get cache instance."""
     return cache

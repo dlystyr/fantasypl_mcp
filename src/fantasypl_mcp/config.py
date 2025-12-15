@@ -15,11 +15,11 @@ class Settings(BaseSettings):
     postgres_password: str = Field(default="postgres", alias="POSTGRES_PASSWORD")
     postgres_db: str = Field(default="fantasypl", alias="POSTGRES_DB")
 
-    # Redis settings
-    redis_host: str = Field(default="localhost", alias="REDIS_HOST")
-    redis_port: int = Field(default=6379, alias="REDIS_PORT")
-    redis_password: str | None = Field(default=None, alias="REDIS_PASSWORD")
-    redis_db: int = Field(default=0, alias="REDIS_DB")
+    # Valkey settings (Redis-compatible)
+    valkey_host: str = Field(default="localhost", alias="VALKEY_HOST")
+    valkey_port: int = Field(default=6379, alias="VALKEY_PORT")
+    valkey_password: str | None = Field(default=None, alias="VALKEY_PASSWORD")
+    valkey_db: int = Field(default=0, alias="VALKEY_DB")
 
     # Server settings
     server_host: str = Field(default="0.0.0.0", alias="SERVER_HOST")
@@ -45,11 +45,11 @@ class Settings(BaseSettings):
         )
 
     @property
-    def redis_url(self) -> str:
-        """Get Redis connection URL."""
-        if self.redis_password:
-            return f"redis://:{self.redis_password}@{self.redis_host}:{self.redis_port}/{self.redis_db}"
-        return f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
+    def valkey_url(self) -> str:
+        """Get Valkey connection URL (uses redis:// protocol as Valkey is Redis-compatible)."""
+        if self.valkey_password:
+            return f"redis://:{self.valkey_password}@{self.valkey_host}:{self.valkey_port}/{self.valkey_db}"
+        return f"redis://{self.valkey_host}:{self.valkey_port}/{self.valkey_db}"
 
     class Config:
         env_file = ".env"
