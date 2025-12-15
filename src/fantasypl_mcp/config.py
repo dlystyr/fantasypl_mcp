@@ -15,7 +15,9 @@ class Settings(BaseSettings):
     postgres_password: str = Field(default="postgres", alias="POSTGRES_PASSWORD")
     postgres_db: str = Field(default="fantasypl", alias="POSTGRES_DB")
 
-    # Valkey settings (Redis-compatible)
+    # Valkey settings - can use either URL or individual settings
+    # URL takes precedence if provided (supports rediss:// for SSL)
+    valkey_url_setting: str | None = Field(default=None, alias="VALKEY_URL")
     valkey_host: str = Field(default="localhost", alias="VALKEY_HOST")
     valkey_port: int = Field(default=6379, alias="VALKEY_PORT")
     valkey_password: str | None = Field(default=None, alias="VALKEY_PASSWORD")
@@ -46,7 +48,13 @@ class Settings(BaseSettings):
 
     @property
     def valkey_url(self) -> str:
-        """Get Valkey connection URL (uses redis:// protocol as Valkey is Redis-compatible)."""
+        """Get Valkey connection URL.
+
+        If VALKEY_URL is set, use it directly (supports rediss:// for SSL).
+        Otherwise, build URL from individual settings.
+        """
+        if self.valkey_url_setting:
+            return self.valkey_url_setting
         if self.valkey_password:
             return f"redis://:{self.valkey_password}@{self.valkey_host}:{self.valkey_port}/{self.valkey_db}"
         return f"redis://{self.valkey_host}:{self.valkey_port}/{self.valkey_db}"

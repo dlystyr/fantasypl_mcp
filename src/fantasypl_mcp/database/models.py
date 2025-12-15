@@ -1,6 +1,6 @@
 """SQLAlchemy models for FPL data."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import (
     Column,
     Integer,
@@ -12,13 +12,17 @@ from sqlalchemy import (
     Text,
     Index,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 
 class Base(DeclarativeBase):
     """Base class for all models."""
     pass
+
+
+# Use timezone-aware timestamps
+TZDateTime = TIMESTAMP(timezone=True)
 
 
 class RawData(Base):
@@ -29,7 +33,7 @@ class RawData(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     data_type = Column(String(50), nullable=False, index=True)
     data = Column(JSONB, nullable=False)
-    fetched_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    fetched_at = Column(TZDateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     __table_args__ = (
         Index("ix_raw_data_type_fetched", "data_type", "fetched_at"),
@@ -122,7 +126,7 @@ class Player(Base):
     chance_of_playing_next_round = Column(Integer)
     chance_of_playing_this_round = Column(Integer)
     news = Column(Text)
-    news_added = Column(DateTime)
+    news_added = Column(TZDateTime)
 
     # Relationships
     team = relationship("Team", back_populates="players")
@@ -149,7 +153,7 @@ class Fixture(Base):
     team_a_score = Column(Integer)
     finished = Column(Boolean, default=False)
     finished_provisional = Column(Boolean, default=False)
-    kickoff_time = Column(DateTime, index=True)
+    kickoff_time = Column(TZDateTime, index=True)
     minutes = Column(Integer)
     provisional_start_time = Column(Boolean)
     started = Column(Boolean, default=False)
@@ -238,7 +242,7 @@ class Event(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String(50), nullable=False)
-    deadline_time = Column(DateTime)
+    deadline_time = Column(TZDateTime)
     finished = Column(Boolean, default=False)
     is_current = Column(Boolean, default=False)
     is_next = Column(Boolean, default=False)

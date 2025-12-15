@@ -16,12 +16,20 @@ class FPLClient:
         self._client: httpx.AsyncClient | None = None
 
     async def __aenter__(self) -> "FPLClient":
+        # Configure limits to avoid connection issues
+        limits = httpx.Limits(
+            max_keepalive_connections=5,
+            max_connections=10,
+            keepalive_expiry=30.0,
+        )
         self._client = httpx.AsyncClient(
             base_url=self.base_url,
             headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             },
-            timeout=30.0,
+            timeout=httpx.Timeout(30.0, connect=10.0),
+            limits=limits,
+            http2=False,  # Stick to HTTP/1.1 for better compatibility
         )
         return self
 

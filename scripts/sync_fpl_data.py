@@ -16,7 +16,7 @@ Example crontab:
 
 import asyncio
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Add src to path for imports
@@ -223,6 +223,22 @@ async def upsert_fixtures(session, fixtures_data: list[dict]) -> None:
         await session.execute(stmt)
 
 
+async def fetch_with_retry(fpl_client: FPLClient, player_id: int, max_retries: int = 3) -> dict | None:
+    """Fetch player summary with retry logic."""
+    for attempt in range(max_retries):
+        try:
+            return await fpl_client.get_element_summary(player_id)
+        except Exception as e:
+            if attempt < max_retries - 1:
+                wait_time = (attempt + 1) * 2  # 2s, 4s, 6s
+                print(f"  Retry {attempt + 1} for player {player_id} in {wait_time}s...")
+                await asyncio.sleep(wait_time)
+            else:
+                print(f"  Failed to fetch player {player_id} after {max_retries} attempts: {e}")
+                return None
+    return None
+
+
 async def sync_player_histories(
     session,
     fpl_client: FPLClient,
@@ -239,9 +255,17 @@ async def sync_player_histories(
 
     print(f"Syncing history for {len(player_ids)} top players...")
 
-    for player_id in player_ids:
+    batch_size = 10
+    success_count = 0
+
+    for i, player_id in enumerate(player_ids):
+        # Fetch with retry logic
+        summary = await fetch_with_retry(fpl_client, player_id)
+
+        if summary is None:
+            continue
+
         try:
-            summary = await fpl_client.get_element_summary(player_id)
             history = summary.get("history", [])
 
             for h in history:
@@ -280,15 +304,22 @@ async def sync_player_histories(
                 ).on_conflict_do_nothing()
                 await session.execute(stmt)
 
-            # Cache the summary in Redis
+            # Cache the summary in Valkey
             await cache.set_player_summary(player_id, summary)
-
-            # Small delay to be nice to the API
-            await asyncio.sleep(0.1)
+            success_count += 1
 
         except Exception as e:
-            print(f"Error syncing player {player_id}: {e}")
+            print(f"Error inserting history for player {player_id}: {e}")
             continue
+
+        # Rate limiting: 1 second between requests, extra pause every batch
+        await asyncio.sleep(1.0)
+
+        if (i + 1) % batch_size == 0:
+            print(f"  Progress: {i + 1}/{len(player_ids)} players synced...")
+            await asyncio.sleep(3.0)  # Extra pause between batches
+
+    print(f"Successfully synced {success_count}/{len(player_ids)} player histories")
 
 
 async def store_raw_data(session, data_type: str, data: dict | list) -> None:
@@ -296,65 +327,66 @@ async def store_raw_data(session, data_type: str, data: dict | list) -> None:
     raw = RawData(
         data_type=data_type,
         data=data,
-        fetched_at=datetime.utcnow(),
+        fetched_at=datetime.now(timezone.utc),
     )
     session.add(raw)
 
 
 async def sync_all() -> None:
     """Main sync function to fetch and store all FPL data."""
-    print(f"Starting FPL data sync at {datetime.utcnow()}")
+    print(f"Starting FPL data sync at {datetime.now(timezone.utc)}")
 
     # Initialize database tables if needed
     await init_db()
 
-    # Connect to Redis
+    # Connect to Valkey
     await cache.connect()
 
     try:
+        # First, fetch bootstrap and fixtures with one client
         async with FPLClient() as fpl_client:
-            # Fetch bootstrap data
             print("Fetching bootstrap-static data...")
             bootstrap = await fpl_client.get_bootstrap_static()
 
-            # Fetch fixtures
             print("Fetching fixtures...")
             fixtures = await fpl_client.get_fixtures()
 
-            async with get_db() as session:
-                # Store raw data
-                print("Storing raw data...")
-                await store_raw_data(session, "bootstrap", bootstrap)
-                await store_raw_data(session, "fixtures", fixtures)
+        # Store and upsert the data
+        async with get_db() as session:
+            print("Storing raw data...")
+            await store_raw_data(session, "bootstrap", bootstrap)
+            await store_raw_data(session, "fixtures", fixtures)
 
-                # Upsert normalized data
-                print("Upserting teams...")
-                await upsert_teams(session, bootstrap.get("teams", []))
+            print("Upserting teams...")
+            await upsert_teams(session, bootstrap.get("teams", []))
 
-                print("Upserting events...")
-                await upsert_events(session, bootstrap.get("events", []))
+            print("Upserting events...")
+            await upsert_events(session, bootstrap.get("events", []))
 
-                print("Upserting players...")
-                await upsert_players(session, bootstrap.get("elements", []))
+            print("Upserting players...")
+            await upsert_players(session, bootstrap.get("elements", []))
 
-                print("Upserting fixtures...")
-                await upsert_fixtures(session, fixtures)
+            print("Upserting fixtures...")
+            await upsert_fixtures(session, fixtures)
 
-                # Sync player histories for top players
-                print("Syncing player histories...")
-                await sync_player_histories(session, fpl_client, top_n=100)
+            await session.commit()
 
-                await session.commit()
+        # Sync player histories with a fresh client (slower, rate-limited)
+        print("Syncing player histories (this may take a few minutes)...")
+        async with get_db() as session:
+            async with FPLClient() as fpl_client:
+                await sync_player_histories(session, fpl_client, top_n=50)
+            await session.commit()
 
-            # Update Redis cache
-            print("Updating Redis cache...")
-            await cache.set_bootstrap(bootstrap)
+        # Update Valkey cache
+        print("Updating Valkey cache...")
+        await cache.set_bootstrap(bootstrap)
 
-            # Cache upcoming fixtures
-            upcoming = [f for f in fixtures if not f.get("finished")]
-            await cache.set_upcoming_fixtures(upcoming)
+        # Cache upcoming fixtures
+        upcoming = [f for f in fixtures if not f.get("finished")]
+        await cache.set_upcoming_fixtures(upcoming)
 
-        print(f"Sync completed successfully at {datetime.utcnow()}")
+        print(f"Sync completed successfully at {datetime.now(timezone.utc)}")
 
     except Exception as e:
         print(f"Sync failed: {e}")
